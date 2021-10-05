@@ -1,0 +1,15 @@
+{
+  "name": "truth-or-dare-gw",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "AC-Dc",
+  "license": "MIT",
+  "scripts": {
+    "start": "node ."
+  },
+  "dependencies": {
+    "discord.js": "^13.1.0",
+    "dotenv": "^10.0.0",
+    "superagent": "^6.1.0"
+  }
+}
