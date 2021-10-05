@@ -67,6 +67,11 @@ client.on('raw', async data => {
                             url: `https://discord.com/oauth2/authorize?client_id=692045914436796436&permissions=19456&scope=bot%20applications.commands&guild_id=${message.guildId}`,
                             style: 'LINK',
                             label: 'Add Slash Commands'
+                        }),
+                        new MessageButton({
+                            url: 'https://discord.gg/mwKZq2y',
+                            style: 'LINK',
+                            label: 'Support Server'
                         })
                     )
                     .toJSON()
