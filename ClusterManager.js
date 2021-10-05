@@ -94,7 +94,7 @@ class ClusterManager {
             shards = 'auto',
             firstClusterID = 'auto',
             shardsPerCluster = 1,
-            startDelay = 5000,
+            startDelay = 10000,
             respawn = true,
             env = process.env,
             logFunction = console.log,
@@ -235,7 +235,6 @@ class ClusterManager {
     handleCluster(id, range, child) {
         this.clusters.set(id, { id, range, child, ready: false, client: '' });
         child.on('spawn', () => {
-            console.log('spawned');
             child.send({ op: 'start', cluster: id, shards: range, totalShards: this.totalShards });
         });
         child.on('exit', this.onExit.bind(this, id, range));

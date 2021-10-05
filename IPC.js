@@ -52,7 +52,6 @@ class IPC extends EventEmitter {
     async onMessage(message) {
         switch (message.op) {
             case 'start':
-                console.log('starting?');
                 return this.client.run(message);
             case 'eval':
                 return this._eval(message);
