@@ -22,7 +22,7 @@ class TOD extends Client {
         super({
             intents: ['GUILD_MESSAGES'],
             makeCache: () => new LimitedCollection({ maxSize: 0 }),
-            presence: { activities: [{ name: 'ToD | /help for help', type: 'PLAYING' }] }
+            presence: { activities: [{ name: 'Truth or Dare • /help', type: 'PLAYING' }] }
         });
         this.ipc = new IPC(this);
     }
@@ -73,6 +73,10 @@ client.on('raw', async data => {
             ]
         }
     });
+});
+
+client.on('ready', () => {
+    console.log(` -- [BOT ONLINE] ${client.clusterId}`);
 });
 
 // @ts-ignore
