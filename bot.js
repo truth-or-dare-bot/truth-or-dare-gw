@@ -52,6 +52,18 @@ client.on('raw', async data => {
     if (!message.content.startsWith(PREFIX)) return;
 
     const command = message.content.slice(PREFIX.length).split(' ')[0];
+    if (command === 'memory--stats') {
+        const memory = await client.ipc.memoryUsage();
+        for (const k in memory) {
+            memory[k] = (memory[k] / 1024 / 1024).toFixed(2) + ' MB';
+        }
+        // @ts-ignore
+        await client.api.channels[message.channelId].messages.post({
+            data: {
+                content: '```js\n' + require('util').inspect(memory) + '\n```'
+            }
+        });
+    }
     if (!COMMANDS.includes(command.toLowerCase())) return;
 
     // @ts-ignore
@@ -81,7 +93,10 @@ client.on('raw', async data => {
 });
 
 client.on('ready', () => {
-    console.log(` -- [BOT ONLINE] ${client.clusterId}`);
+    console.log(` -- [CLUSTER ONLINE] ${client.clusterId}`);
+});
+client.on('shardReady', id => {
+    console.log(`-- [SHARD READY] ${id}`);
 });
 
 // @ts-ignore

@@ -184,12 +184,16 @@ class IPC extends EventEmitter {
 
     /**
      * Get the total memory usage of all clusters and the main process
-     * @returns {Promise<number>}
+     * @returns {Promise<Object>}
      */
     async memoryUsage() {
-        const master = await this.masterEval('process.memoryUsage().heapUsed');
-        const clusters = await this.broadcastEval('process.memoryUsage().heapUsed');
-        return master + clusters.reduce((a, c) => a + c, 0);
+        const master = await this.masterEval('process.memoryUsage()');
+        const clusters = await this.broadcastEval('process.memoryUsage()');
+        clusters.push(master);
+        return clusters.reduce((a, c) => {
+            Object.keys(c).forEach(k => (a[k] = (a[k] || 0) + c[k]));
+            return a;
+        }, {});
     }
 
     get [Symbol.toStringTag]() {
