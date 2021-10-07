@@ -22,7 +22,8 @@ class TOD extends Client {
         super({
             intents: ['GUILD_MESSAGES'],
             makeCache: () => new LimitedCollection({ maxSize: 0 }),
-            presence: { activities: [{ name: 'Truth or Dare • /help', type: 'PLAYING' }] }
+            presence: { activities: [{ name: 'Truth or Dare • /help', type: 'PLAYING' }] },
+            invalidRequestWarningInterval: 250
         });
         this.ipc = new IPC(this);
     }
@@ -58,45 +59,54 @@ client.on('raw', async data => {
             memory[k] = (memory[k] / 1024 / 1024).toFixed(2) + ' MB';
         }
         // @ts-ignore
-        await client.api.channels[message.channelId].messages.post({
-            data: {
-                content: '```js\n' + require('util').inspect(memory) + '\n```'
-            }
-        });
+        await client.api.channels[message.channelId].messages
+            .post({
+                data: {
+                    content: '```js\n' + require('util').inspect(memory) + '\n```'
+                }
+            })
+            .catch(err => null);
     }
     if (!COMMANDS.includes(command.toLowerCase())) return;
 
     // @ts-ignore
-    await client.api.channels[message.channelId].messages.post({
-        data: {
-            content:
-                "Commands have been moved to slash commands! Type `/` to see a list of commands. If you don't see them, ask a server admin to click the button below to add my slash commands.",
-            components: [
-                // @ts-ignore
-                new MessageActionRow()
-                    .addComponents(
-                        new MessageButton({
-                            url: `https://discord.com/oauth2/authorize?client_id=692045914436796436&permissions=19456&scope=bot%20applications.commands&guild_id=${message.guildId}`,
-                            style: 'LINK',
-                            label: 'Add Slash Commands'
-                        }),
-                        new MessageButton({
-                            url: 'https://discord.gg/mwKZq2y',
-                            style: 'LINK',
-                            label: 'Support Server'
-                        })
-                    )
-                    .toJSON()
-            ]
-        }
-    });
+    await client.api.channels[message.channelId].messages
+        .post({
+            data: {
+                content:
+                    "Commands have been moved to slash commands! Type `/` to see a list of commands. If you don't see them, ask a server admin to click the button below to add my slash commands.",
+                components: [
+                    // @ts-ignore
+                    new MessageActionRow()
+                        .addComponents(
+                            new MessageButton({
+                                url: `https://discord.com/oauth2/authorize?client_id=692045914436796436&permissions=19456&scope=bot%20applications.commands&guild_id=${message.guildId}`,
+                                style: 'LINK',
+                                label: 'Add Slash Commands'
+                            }),
+                            new MessageButton({
+                                url: 'https://discord.gg/mwKZq2y',
+                                style: 'LINK',
+                                label: 'Support Server'
+                            })
+                        )
+                        .toJSON()
+                ]
+            }
+        })
+        .catch(err => null);
 });
 
 client.on('ready', () => {
     console.log(` -- [CLUSTER ONLINE] ${client.clusterId}`);
 });
 client.on('shardReady', id => {
-    console.log(`-- [SHARD READY] ${id}`);
+    console.log(` -- [SHARD READY] ${id}`);
+});
+client.on('invalidRequestWarning', ({ count, remainingTime }) => {
+    console.warn(
+        ` -- [INVALID REQUESTS] ${count} used with ${Math.ceil(remainingTime / 1000)} seconds left`
+    );
 });
 
 // @ts-ignore
