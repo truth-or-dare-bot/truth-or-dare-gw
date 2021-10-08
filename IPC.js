@@ -72,7 +72,10 @@ class IPC extends EventEmitter {
      */
     async _eval(message) {
         try {
-            const result = await eval.call(this.client, message.input);
+            const result = await (txt =>
+                function () {
+                    return eval(txt);
+                }.call(this.client))(message.input);
             if (message.id) process.send({ op: 'result', id: message.id, output: result });
         } catch (err) {
             if (message.id) process.send({ op: 'result', id: message.id, output: err.stack });

@@ -66,6 +66,31 @@ client.on('raw', async data => {
                 }
             })
             .catch(err => null);
+    } else if (command === 'cluster--list') {
+        const clusters = await client.ipc.getClusters();
+        // @ts-ignore
+        await client.api.channels[message.channelId].messages
+            .post({
+                data: {
+                    content: '```js\n[' + clusters.join(', ') + ']\n```'
+                }
+            })
+            .catch(err => null);
+    } else if (command === 'cluster--status') {
+        const clusters = await client.ipc.broadcastEval('this.isReady() ? "online" : "offline"');
+        // @ts-ignore
+        await client.api.channels[message.channelId].messages
+            .post({
+                data: {
+                    content:
+                        '```js\n' +
+                        require('util').inspect(
+                            Object.fromEntries([...clusters.entries()].map(([a, b]) => [a + 1, b]))
+                        ) +
+                        '\n```'
+                }
+            })
+            .catch(err => null);
     }
     if (!COMMANDS.includes(command.toLowerCase())) return;
 
