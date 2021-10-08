@@ -15,7 +15,8 @@ const UNRESUMABLE_CLOSE_CODES = [
 ];
 const IPC = require('./IPC.js');
 const { PREFIX } = process.env;
-const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w'];
+const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help'];
+const OWNERS = ['393294718345412618', '276544649148235776'];
 
 class TOD extends Client {
     constructor() {
@@ -50,7 +51,10 @@ client.on('raw', async data => {
     if (data.t !== 'MESSAGE_CREATE') return;
     const message = new Message(client, data.d);
     if (message.author.bot) return;
-    if (!message.content.startsWith(PREFIX)) return;
+
+    const mentioned = new RegExp(`^<@!?${client.user.id}>$`).test(message.content);
+
+    if (!message.content.startsWith(PREFIX) && !mentioned) return;
 
     const command = message.content.slice(PREFIX.length).split(' ')[0];
     if (command === 'memory--stats') {
@@ -91,8 +95,44 @@ client.on('raw', async data => {
                 }
             })
             .catch(err => null);
+    } else if (command === '_eval' && OWNERS.includes(message.author.id)) {
+        let result, type, length;
+        try {
+            result = await eval(message.content.slice(PREFIX.length + '_eval'.length).trim());
+            type = typeof result;
+            if (typeof result !== 'string') result = require('util').inspect(result);
+            length = result.length;
+            if (result.length > 4080)
+                result = await require('superagent')
+                    .post(`https://haste.unbelievaboat.com/documents`)
+                    .send(result)
+                    .then(res => `https://haste.unbelievaboat.com/${res.body.key}.js`);
+            else result = '```js\n' + result + '\n```';
+        } catch (err) {
+            type = 'error';
+            result = '```js\n' + require('util').inspect(err).slice(0, 4070) + '\n```';
+            length = 'unknown';
+        }
+        // @ts-ignore
+        await client.api.channels[message.channelId].messages
+            .post({
+                data: {
+                    embeds: [
+                        {
+                            title: type,
+                            description: result,
+                            color: 0x039dfc,
+                            footer: {
+                                text: `length: ${length}`
+                            },
+                            timestamp: new Date()
+                        }
+                    ]
+                }
+            })
+            .catch(err => null);
     }
-    if (!COMMANDS.includes(command.toLowerCase())) return;
+    if (!COMMANDS.includes(command.toLowerCase()) && !mentioned) return;
 
     // @ts-ignore
     await client.api.channels[message.channelId].messages
