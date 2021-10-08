@@ -3,7 +3,8 @@ const ClusterManager = require('./ClusterManager');
 
 const manager = new ClusterManager('./bot.js', {
     token: process.env.DISCORD_TOKEN,
-    shardsPerCluster: 16
+    shardsPerCluster: 16,
+    totalShards: Number(process.env.TOTAL_SHARDS) || 'auto'
 });
 
 manager.run();
