@@ -15,8 +15,8 @@ const UNRESUMABLE_CLOSE_CODES = [
 ];
 const IPC = require('./IPC.js');
 const { PREFIX } = process.env;
-const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help'];
-const OWNERS = ['393294718345412618', '276544649148235776'];
+const OWNERS = process.env.OWNERS?.split(',') || [];
+const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help', 'tod', 'paranoia'];
 
 class TOD extends Client {
     constructor() {
