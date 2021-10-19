@@ -34,6 +34,7 @@ class IPC extends EventEmitter {
         this.messageOps = messageOps;
 
         process.on('message', this.onMessage.bind(this));
+        client.on('ready', this.onReady.bind(this));
     }
 
     /**
@@ -42,7 +43,7 @@ class IPC extends EventEmitter {
      * @param {messageOp} func - The function to call for the op
      */
     addMessageOp(op, func) {
-        this[op] = func;
+        this.messageOps[op] = func;
     }
 
     /**
@@ -64,6 +65,13 @@ class IPC extends EventEmitter {
                 break;
             }
         }
+    }
+
+    /**
+     * Tell the master process the cluster is ready
+     */
+    onReady() {
+        process.send({ op: 'ready', client: this.client.user?.id });
     }
 
     /**
@@ -157,7 +165,7 @@ class IPC extends EventEmitter {
      */
     async restartAll(user) {
         const res = await this.request('restart', { target: 'all', user });
-        if (res.includes('restarting')) return res;
+        if (res.includes('Restarting')) return res;
         else throw new Error(res);
     }
 
@@ -169,7 +177,7 @@ class IPC extends EventEmitter {
      */
     async restartCluster(targetID, user) {
         const res = await this.request('restart', { target: 'cluster', targetID, user });
-        if (res.includes('restarting')) return res;
+        if (res.includes('Restarting')) return res;
         else throw new Error(res);
     }
 
@@ -181,7 +189,7 @@ class IPC extends EventEmitter {
      */
     async restartClusters(targetID, user) {
         const res = await this.request('restart', { target: 'clusters', targetID, user });
-        if (res.includes('restarting')) return res;
+        if (res.includes('Restarting')) return res;
         else throw new Error(res);
     }
 
