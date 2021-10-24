@@ -21,12 +21,13 @@ const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help', 't
 class TOD extends Client {
     constructor() {
         super({
-            intents: ['GUILD_MESSAGES'],
+            intents: ['GUILDS', 'GUILD_MESSAGES'],
             makeCache: () => new LimitedCollection({ maxSize: 0 }),
             presence: { activities: [{ name: 'Truth or Dare • /help', type: 'PLAYING' }] },
             invalidRequestWarningInterval: 250
         });
         this.ipc = new IPC(this);
+        this.guildList = [];
     }
 
     /**
@@ -70,13 +71,15 @@ client.on('raw', async data => {
                 }
             })
             .catch(err => null);
-    } else if (command === 'cluster--list') {
-        const clusters = await client.ipc.getClusters();
+    } else if (command === 'guild--count') {
+        const guildCounts = await client.ipc.broadcastEval('this.guildList.length');
         // @ts-ignore
         await client.api.channels[message.channelId].messages
             .post({
                 data: {
-                    content: '```js\n[' + clusters.join(', ') + ']\n```'
+                    content: `This cluster: ${
+                        client.guildList.length
+                    }\nTotal Guilds: ${guildCounts.reduce((a, c) => a + c, 0)}`
                 }
             })
             .catch(err => null);
@@ -174,6 +177,17 @@ client.on('invalidRequestWarning', ({ count, remainingTime }) => {
     console.warn(
         ` -- [INVALID REQUESTS] ${count} used with ${Math.ceil(remainingTime / 1000)} seconds left`
     );
+});
+
+client.on('raw', async data => {
+    if (data.t !== 'READY') return;
+    client.guildList.push(...data.d.guilds.map(g => g.id));
+});
+client.on('raw', async data => {
+    if (!['GUILD_CREATE', 'GUILD_DELETE'].includes(data.t)) return;
+    if (data.t === 'GUILD_CREATE') client.guildList.push(data.d.id);
+    if (data.t === 'GUILD_DELETE' && client.guildList.includes(data.d.id))
+        client.guildList.splice(client.guildList.indexOf(data.d.id), 1);
 });
 
 // @ts-ignore
