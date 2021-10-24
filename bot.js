@@ -185,7 +185,8 @@ client.on('raw', async data => {
 });
 client.on('raw', async data => {
     if (!['GUILD_CREATE', 'GUILD_DELETE'].includes(data.t)) return;
-    if (data.t === 'GUILD_CREATE') client.guildList.push(data.d.id);
+    if (data.t === 'GUILD_CREATE' && !client.guildList.includes(data.d.id))
+        client.guildList.push(data.d.id);
     if (data.t === 'GUILD_DELETE' && client.guildList.includes(data.d.id))
         client.guildList.splice(client.guildList.indexOf(data.d.id), 1);
 });
