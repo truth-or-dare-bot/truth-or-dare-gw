@@ -28,6 +28,25 @@ class TOD extends Client {
         });
         this.ipc = new IPC(this);
         this.guildList = [];
+        this.commandStats = Object.fromEntries(COMMANDS.map(c => [c, 0]));
+        this.commandStats.mentioned = 0;
+        this.commandStats['memory--stats'] = 0;
+        this.commandStats['guild--count'] = 0;
+        this.commandStats['cluster--status'] = 0;
+        this.commandStats['command--stats'] = 0;
+        this.commandStats['_eval'] = 0;
+
+        this.rollingStats = {
+            current: 0,
+            past: [],
+            lastUpdate: Date.now()
+        };
+        setInterval(() => {
+            this.rollingStats.past.unshift(this.rollingStats.current);
+            if (this.rollingStats.past.length > 24) this.rollingStats.past.pop();
+            this.rollingStats.current = 0;
+            this.rollingStats.lastUpdate = Date.now();
+        }, 60 * 60 * 1000);
     }
 
     /**
@@ -62,6 +81,7 @@ client.on('raw', async data => {
 
     const command = message.content.slice(PREFIX.length).split(' ')[0];
     if (command === 'memory--stats') {
+        client.commandStats['memory--stats']++;
         const memory = await client.ipc.memoryUsage();
         for (const k in memory) {
             memory[k] = (memory[k] / 1024 / 1024).toFixed(2) + ' MB';
@@ -75,6 +95,7 @@ client.on('raw', async data => {
             })
             .catch(err => null);
     } else if (command === 'guild--count') {
+        client.commandStats['guild--count']++;
         const guildCounts = await client.ipc.broadcastEval('this.guildList.length');
         // @ts-ignore
         await client.api.channels[message.channelId].messages
@@ -87,6 +108,7 @@ client.on('raw', async data => {
             })
             .catch(err => null);
     } else if (command === 'cluster--status') {
+        client.commandStats['cluster--status']++;
         const clusters = await client.ipc.broadcastEval('this.isReady() ? "online" : "offline"');
         // @ts-ignore
         await client.api.channels[message.channelId].messages
@@ -101,7 +123,40 @@ client.on('raw', async data => {
                 }
             })
             .catch(err => null);
+    } else if (command === 'command--stats') {
+        client.commandStats['command--stats']++;
+        const totals = await client.ipc.broadcastEval('[this.rollingStats, this.commandStats]');
+        const [rollingStats, commandStats] = totals.reduce(([r, c], [r1, c1], i) => [
+            {
+                current: r.current + r1.current,
+                past: Array.from(
+                    { length: Math.max(r.past.length, r1.past.length) },
+                    (_, k) => (r.past[k] || 0) + (r1.past[k] || 0)
+                ),
+                lastUpdate: (r.lastUpdate * i + r1.lastUpdate) / (i + 1)
+            },
+            Object.fromEntries(Object.entries(c).map(([name, count]) => [name, c1[name] + count]))
+        ]);
+        // @ts-ignore
+        await client.api.channels[message.channelId].messages
+            .post({
+                data: {
+                    content: `Usage since <t:${
+                        (rollingStats.lastUpdate / 1000) | 0
+                    }:R>: ${rollingStats.current.toLocaleString()}\nAverage Usage/h: ${
+                        rollingStats.past.reduce((a, c) => a + c, 0) / rollingStats.past.length
+                    }\n__Totals:__\n${Object.entries(commandStats)
+                        .filter(
+                            ([name]) =>
+                                OWNERS.includes(message.author.id) || COMMANDS.includes(name)
+                        )
+                        .map(([name, count]) => `${name}: ${count.toLocaleString()}`)
+                        .join('\n')}`
+                }
+            })
+            .catch(err => null);
     } else if (command === '_eval' && OWNERS.includes(message.author.id)) {
+        client.commandStats['_eval']++;
         const hide = (str, thing) => str.replaceAll(thing, '-- NOPE --');
         let result, type, length;
         try {
@@ -141,6 +196,8 @@ client.on('raw', async data => {
             .catch(err => null);
     }
     if (!COMMANDS.includes(command.toLowerCase()) && !mentioned) return;
+    client.commandStats[mentioned ? 'mentioned' : command.toLowerCase()]++;
+    client.rollingStats.current++;
 
     // @ts-ignore
     await client.api.channels[message.channelId].messages
