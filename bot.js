@@ -14,7 +14,7 @@ const UNRESUMABLE_CLOSE_CODES = [
     RPCErrorCodes.InvalidClientId
 ];
 const IPC = require('./IPC.js');
-const { PREFIX } = process.env;
+const { PREFIX, TOPGG_KEY } = process.env;
 const OWNERS = process.env.OWNERS?.split(',') || [];
 const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help', 'tod', 'paranoia'];
 
@@ -40,6 +40,9 @@ class TOD extends Client {
         const [start, end] = message.shards;
         this.options.shards = Array.from({ length: end - start + 1 }, (_, i) => i + start);
         console.log(` -- [CLUSTER START] ${this.clusterId}`);
+
+        if (this.clusterId === 1) setInterval(postTopgg, 30 * 60 * 1000);
+
         return this.login();
     }
 }
@@ -77,9 +80,9 @@ client.on('raw', async data => {
         await client.api.channels[message.channelId].messages
             .post({
                 data: {
-                    content: `This cluster: ${
-                        client.guildList.length
-                    }\nTotal Guilds: ${guildCounts.reduce((a, c) => a + c, 0)}`
+                    content: `This cluster: ${client.guildList.length.toLocaleString()}\nTotal Guilds: ${guildCounts
+                        .reduce((a, c) => a + c, 0)
+                        .toLocaleString()}`
                 }
             })
             .catch(err => null);
@@ -318,3 +321,14 @@ client.ws.createShards = async function createShards() {
 
     return true;
 };
+
+async function postTopgg() {
+    const guildCounts = await client.ipc.broadcastEval('this.guildList.length');
+    const shard_count = await client.ipc.masterEval('this.totalShards');
+
+    await require('superagent')
+        .post('https://top.gg/api/bots/692045914436796436/stats')
+        .set('Authorization', TOPGG_KEY)
+        .send({ shard_count, server_count: guildCounts.reduce((a, c) => a + c, 0) })
+        .catch(console.error);
+}
