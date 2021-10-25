@@ -27,7 +27,7 @@ class TOD extends Client {
             invalidRequestWarningInterval: 250
         });
         this.ipc = new IPC(this);
-        this.guildList = [];
+        this.guildList = new Set();
         this.commandStats = Object.fromEntries(COMMANDS.map(c => [c, 0]));
         this.commandStats.mentioned = 0;
         this.commandStats['memory--stats'] = 0;
@@ -96,12 +96,12 @@ client.on('raw', async data => {
             .catch(err => null);
     } else if (command === 'guild--count') {
         client.commandStats['guild--count']++;
-        const guildCounts = await client.ipc.broadcastEval('this.guildList.length');
+        const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
         // @ts-ignore
         await client.api.channels[message.channelId].messages
             .post({
                 data: {
-                    content: `This cluster: ${client.guildList.length.toLocaleString()}\nTotal Guilds: ${guildCounts
+                    content: `This cluster: ${client.guildList.size.toLocaleString()}\nTotal Guilds: ${guildCounts
                         .reduce((a, c) => a + c, 0)
                         .toLocaleString()}`
                 }
@@ -241,10 +241,8 @@ client.on('invalidRequestWarning', ({ count, remainingTime }) => {
 
 client.on('raw', async data => {
     if (!['GUILD_CREATE', 'GUILD_DELETE'].includes(data.t)) return;
-    if (data.t === 'GUILD_CREATE' && !client.guildList.includes(data.d.id))
-        client.guildList.push(data.d.id);
-    if (data.t === 'GUILD_DELETE' && client.guildList.includes(data.d.id))
-        client.guildList.splice(client.guildList.indexOf(data.d.id), 1);
+    if (data.t === 'GUILD_CREATE') client.guildList.add(data.d.id);
+    if (data.t === 'GUILD_DELETE') client.guildList.delete(data.d.id);
 });
 
 // @ts-ignore
