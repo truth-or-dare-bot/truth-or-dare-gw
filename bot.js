@@ -379,7 +379,7 @@ client.ws.createShards = async function createShards() {
 };
 
 async function postTopgg() {
-    const guildCounts = await client.ipc.broadcastEval('this.guildList.length');
+    const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
     const shard_count = await client.ipc.masterEval('this.totalShards');
 
     await require('superagent')
