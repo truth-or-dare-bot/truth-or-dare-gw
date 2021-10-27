@@ -350,9 +350,7 @@ client.ws.createShards = async function createShards() {
     // @ts-ignore
     this.shards.set(shard.id, shard);
 
-    try {
-        await shard.connect();
-    } catch (error) {
+    shard.connect().catch(error => {
         if (error?.code && UNRECOVERABLE_CLOSE_CODES.includes(error.code)) {
             throw new Error(WSCodes[error.code]);
             // Undefined if session is invalid, error event for regular closes
@@ -361,10 +359,13 @@ client.ws.createShards = async function createShards() {
             this.debug('Failed to connect to the gateway, requeueing...', shard);
             // @ts-ignore
             this.shardQueue.add(shard);
+            // @ts-ignore
+            return this.createShards();
         } else {
             throw error;
         }
-    }
+    });
+
     // If we have more shards, add a 5s delay
     // @ts-ignore
     if (this.shardQueue.size) {
