@@ -173,7 +173,7 @@ class ClusterManager {
             const firstShard = i * this.shardsPerCluster + this.shards[0];
             const lastShard = Math.min((i + 1) * this.shardsPerCluster - 1, this.shards[1]);
 
-            this.spawnCluster(i + this.firstClusterID, [firstShard, lastShard]);
+            await this.spawnCluster(i + this.firstClusterID, [firstShard, lastShard]);
             await sleep(this.startDelay);
         }
     }
@@ -212,7 +212,7 @@ class ClusterManager {
      * @param {number} id - The cluster id
      * @param {[number, number]} range - The range of shards the cluster will run
      */
-    spawnCluster(id, range) {
+    async spawnCluster(id, range) {
         if (this.clusters.has(id)) throw new Error(`Cluster with id of ${id} already exists`);
         const child = require('child_process').fork(this.file, {
             env: Object.assign(
@@ -223,7 +223,7 @@ class ClusterManager {
                 this.env
             )
         });
-        this.handleCluster(id, range, child);
+        await this.handleCluster(id, range, child);
     }
 
     /**
@@ -232,13 +232,21 @@ class ClusterManager {
      * @param {[number, number]} range - The range of shards it handles
      * @param {import('child_process').ChildProcess} child - The cluster process
      */
-    handleCluster(id, range, child) {
+    async handleCluster(id, range, child) {
         this.clusters.set(id, { id, range, child, ready: false, client: '' });
-        child.on('spawn', () => {
-            child.send({ op: 'start', cluster: id, shards: range, totalShards: this.totalShards });
-        });
         child.on('exit', this.onExit.bind(this, id, range));
         child.on('message', this.onMessage.bind(this, this.clusters.get(id)));
+        return new Promise(res =>
+            child.on('spawn', () => {
+                child.send({
+                    op: 'start',
+                    cluster: id,
+                    shards: range,
+                    totalShards: this.totalShards
+                });
+                res();
+            })
+        );
     }
 
     /**
