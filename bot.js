@@ -7,6 +7,8 @@ const {
     Constants: { ShardEvents, WSCodes, Events }
 } = require('discord.js');
 const { RPCErrorCodes } = require('discord-api-types/v9');
+const express = require('express');
+const { register } = require('prom-client');
 const UNRECOVERABLE_CLOSE_CODES = Object.keys(WSCodes).slice(1).map(Number);
 const UNRESUMABLE_CLOSE_CODES = [
     RPCErrorCodes.UnknownError,
@@ -14,6 +16,7 @@ const UNRESUMABLE_CLOSE_CODES = [
     RPCErrorCodes.InvalidClientId
 ];
 const IPC = require('./IPC.js');
+const Metrics = require('./Metrics');
 const { PREFIX, TOPGG_KEY } = process.env;
 const OWNERS = process.env.OWNERS?.split(',') || [];
 const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help', 'tod', 'paranoia'];
@@ -27,6 +30,7 @@ class TOD extends Client {
             invalidRequestWarningInterval: 250
         });
         this.ipc = new IPC(this);
+        this.metrics = new Metrics(this);
         this.guildList = new Set();
         this.commandStats = Object.fromEntries(COMMANDS.map(c => [c, 0]));
         this.commandStats.mentioned = 0;
@@ -35,6 +39,8 @@ class TOD extends Client {
         this.commandStats['cluster--status'] = 0;
         this.commandStats['command--stats'] = 0;
         this.commandStats['_eval'] = 0;
+
+        this.websocketEvents = {};
 
         this.rollingStats = {
             current: 0,
@@ -60,7 +66,11 @@ class TOD extends Client {
         this.options.shards = Array.from({ length: end - start + 1 }, (_, i) => i + start);
         console.log(` -- [CLUSTER START] ${this.clusterId}`);
 
-        if (this.clusterId === 1) setInterval(postTopgg, 30 * 60 * 1000);
+        if (this.clusterId === 1) {
+            startWebServer();
+            setInterval(postTopgg, 30 * 60 * 1000);
+            setInterval(updateMetrics, 60 * 1000);
+        }
 
         return this.login();
     }
@@ -240,6 +250,10 @@ client.on('invalidRequestWarning', ({ count, remainingTime }) => {
 });
 
 client.on('raw', async data => {
+    if (data.t) {
+        if (client.websocketEvents[data.t]) client.websocketEvents[data.t]++;
+        else client.websocketEvents[data.t] = 1;
+    }
     if (!['GUILD_CREATE', 'GUILD_DELETE'].includes(data.t)) return;
     if (data.t === 'GUILD_CREATE') client.guildList.add(data.d.id);
     if (data.t === 'GUILD_DELETE') client.guildList.delete(data.d.id);
@@ -378,6 +392,17 @@ client.ws.createShards = async function createShards() {
     return true;
 };
 
+function startWebServer() {
+    const app = express();
+    app.get('/metrics', async (req, res) => {
+        if (req.headers.authorization?.replace('Bearer ', '') !== process.env.PROMETHEUS_AUTH)
+            return res.sendStatus(401);
+        const metrics = await register.metrics();
+        res.send(metrics);
+    });
+    app.listen(3000, () => console.log('  -- [METRICS SERVER ONLINE]'));
+}
+
 async function postTopgg() {
     const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
     const shard_count = await client.ipc.masterEval('this.totalShards');
@@ -387,4 +412,29 @@ async function postTopgg() {
         .set('Authorization', TOPGG_KEY)
         .send({ shard_count, server_count: guildCounts.reduce((a, c) => a + c, 0) })
         .catch(console.error);
+}
+
+async function updateMetrics() {
+    const checkClustersOnline = await client.ipc.broadcastEval('this.isReady()');
+    if (checkClustersOnline.find(s => !s) === false) return; // If all clusters aren't ready yet
+
+    // Server Count
+    const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
+    const guildCount = guildCounts.reduce((a, c) => a + c, 0);
+
+    client.metrics.guildCount.set(guildCount);
+
+    const commandStatsArray = await client.ipc.broadcastEval('this.commandStats');
+    const commandStats = commandStatsArray.reduce((c, c1) =>
+        Object.fromEntries(Object.entries(c).map(([name, count]) => [name, c1[name] + count]))
+    );
+
+    client.metrics.updateCommandUse(commandStats);
+
+    const websocketEventsArray = await client.ipc.broadcastEval('this.websocketEvents');
+    const websocketEvents = websocketEventsArray.reduce((e, e1) =>
+        Object.fromEntries(Object.entries(e).map(([type, count]) => [type, e1[type] + count]))
+    );
+
+    client.metrics.updateWebsocketEvents(websocketEvents);
 }
