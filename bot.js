@@ -435,7 +435,11 @@ async function updateMetrics() {
 
     const websocketEventsArray = await client.ipc.broadcastEval('this.websocketEvents');
     const websocketEvents = websocketEventsArray.reduce((e, e1) =>
-        Object.fromEntries(Object.entries(e).map(([type, count]) => [type, e1[type] + count]))
+        Object.fromEntries(
+            [...Object.keys(e), ...Object.keys(e1)]
+                .filter((a, i, r) => r.indexOf(a) === i)
+                .map(type => [type, (e[type] ?? 0) + (e1[type] ?? 0)])
+        )
     );
 
     client.metrics.updateWebsocketEvents(websocketEvents);
