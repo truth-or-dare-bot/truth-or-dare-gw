@@ -249,14 +249,16 @@ client.on('invalidRequestWarning', ({ count, remainingTime }) => {
     );
 });
 
-client.on('raw', async data => {
-    if (data.t) {
-        if (client.websocketEvents[data.t]) client.websocketEvents[data.t]++;
-        else client.websocketEvents[data.t] = 1;
-    }
+client.on('raw', data => {
     if (!['GUILD_CREATE', 'GUILD_DELETE'].includes(data.t)) return;
     if (data.t === 'GUILD_CREATE') client.guildList.add(data.d.id);
     if (data.t === 'GUILD_DELETE') client.guildList.delete(data.d.id);
+});
+
+client.on('raw', data => {
+    if (!data.t) return;
+    if (!client.websocketEvents[data.t]) client.websocketEvents[data.t] = 0;
+    client.websocketEvents[data.t]++;
 });
 
 // @ts-ignore
@@ -416,7 +418,7 @@ async function postTopgg() {
 
 async function updateMetrics() {
     const checkClustersOnline = await client.ipc.broadcastEval('this.isReady()');
-    if (checkClustersOnline.find(s => !s) === false) return; // If all clusters aren't ready yet
+    if (checkClustersOnline.some(s => !s)) return; // If all clusters aren't ready yet
 
     // Server Count
     const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
