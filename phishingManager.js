@@ -16,6 +16,10 @@ module.exports = class PhishingManager {
 
         await this.fetchDomains();
 
+        setInterval(() => {
+            this.fetchDomains();
+        }, this.fetchInterval);
+
         console.log('  -- [PHISHING MANAGER RUNNING]');
     }
 
