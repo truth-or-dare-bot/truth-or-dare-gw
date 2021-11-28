@@ -42,8 +42,10 @@ class Metrics {
         );
     }
 
-    addDomainHit(domain) {
-        this.domainHits.inc({ domain });
+    updateDomainHits(domains) {
+        Object.entries(domains).forEach(([domain, count]) =>
+            this.domainHits.labels(domain).set(count)
+        );
     }
 }
 

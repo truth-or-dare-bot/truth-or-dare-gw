@@ -43,6 +43,7 @@ class TOD extends Client {
         this.commandStats['_eval'] = 0;
 
         this.websocketEvents = {};
+        this.domainHits = {};
 
         this.rollingStats = {
             current: 0,
@@ -430,6 +431,7 @@ async function updateMetrics() {
 
     client.metrics.guildCount.set(guildCount);
 
+    // Command Usage
     const commandStatsArray = await client.ipc.broadcastEval('this.commandStats');
     const commandStats = commandStatsArray.reduce((c, c1) =>
         Object.fromEntries(Object.entries(c).map(([name, count]) => [name, c1[name] + count]))
@@ -437,6 +439,7 @@ async function updateMetrics() {
 
     client.metrics.updateCommandUse(commandStats);
 
+    // Websocket Events
     const websocketEventsArray = await client.ipc.broadcastEval('this.websocketEvents');
     const websocketEvents = websocketEventsArray.reduce((e, e1) =>
         Object.fromEntries(
@@ -447,4 +450,12 @@ async function updateMetrics() {
     );
 
     client.metrics.updateWebsocketEvents(websocketEvents);
+
+    // Phishing Domain Hits
+    const phishingDomainArray = await client.ipc.broadcastEval('this.domainHits');
+    const phishingDomains = phishingDomainArray.reduce((c, c1) =>
+        Object.fromEntries(Object.entries(c).map(([domain, count]) => [domain, c1[domain] + count]))
+    );
+
+    client.metrics.updateDomainHits(phishingDomains);
 }

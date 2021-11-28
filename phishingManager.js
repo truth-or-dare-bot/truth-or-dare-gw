@@ -28,11 +28,13 @@ module.exports = class PhishingManager {
             (d, i, self) => i === self.findIndex(a => a[0] === d[0])
         );
 
-        const matches = domains.filter(d => this.domains.has(d[1]));
+        const hasMatch = domains.filter(d => this.domains.has(d[1]));
 
-        if (matches.length) {
+        if (hasMatch.length) {
+            const matches = hasMatch.map(m => m[1]);
             for (const match of matches) {
-                this.client.metrics.addDomainHit(match);
+                if (!this.client.domainHits[match]) this.client.domainHits[match] = 0;
+                this.client.domainHits[match]++;
             }
         }
     }
@@ -42,7 +44,7 @@ module.exports = class PhishingManager {
             .get(process.env.PHISH_API)
             .send()
             .catch(_ => null);
-        if (!fetchDomains || !Array.isArray(fetchDomains.data)) return;
-        this.domains = new Set(fetchDomains);
+        if (!fetchDomains || !Array.isArray(fetchDomains.body)) return;
+        this.domains = new Set(fetchDomains.body);
     }
 };
