@@ -21,6 +21,12 @@ class Metrics {
             labelNames: ['type']
         });
 
+        this.domainHits = new Gauge({
+            name: 'domain_hits',
+            help: 'The number of phishing domains the bot has seen',
+            labelNames: ['domain']
+        });
+
         collectDefaultMetrics();
     }
 
@@ -34,6 +40,10 @@ class Metrics {
         Object.entries(events).forEach(([type, count]) =>
             this.websocketEvents.labels(type).set(count)
         );
+    }
+
+    addDomainHit(domain) {
+        this.domainHits.inc({ domain });
     }
 }
 

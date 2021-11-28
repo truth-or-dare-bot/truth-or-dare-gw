@@ -17,6 +17,7 @@ const UNRESUMABLE_CLOSE_CODES = [
 ];
 const IPC = require('./IPC.js');
 const Metrics = require('./Metrics');
+const PhishingManager = require('./phishingManager.js');
 const { PREFIX, TOPGG_KEY } = process.env;
 const OWNERS = process.env.OWNERS?.split(',') || [];
 const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help', 'tod', 'paranoia'];
@@ -31,6 +32,7 @@ class TOD extends Client {
         });
         this.ipc = new IPC(this);
         this.metrics = new Metrics(this);
+        this.phishingManager = new PhishingManager(this);
         this.guildList = new Set();
         this.commandStats = Object.fromEntries(COMMANDS.map(c => [c, 0]));
         this.commandStats.mentioned = 0;
@@ -65,6 +67,8 @@ class TOD extends Client {
         const [start, end] = message.shards;
         this.options.shards = Array.from({ length: end - start + 1 }, (_, i) => i + start);
         console.log(` -- [CLUSTER START] ${this.clusterId}`);
+
+        this.phishingManager.run();
 
         if (this.clusterId === 1) {
             startWebServer();
