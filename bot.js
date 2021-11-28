@@ -453,8 +453,12 @@ async function updateMetrics() {
 
     // Phishing Domain Hits
     const phishingDomainArray = await client.ipc.broadcastEval('this.domainHits');
-    const phishingDomains = phishingDomainArray.reduce((c, c1) =>
-        Object.fromEntries(Object.entries(c).map(([domain, count]) => [domain, c1[domain] + count]))
+    const phishingDomains = phishingDomainArray.reduce((e, e1) =>
+        Object.fromEntries(
+            [...Object.keys(e), ...Object.keys(e1)]
+                .filter((a, i, r) => r.indexOf(a) === i)
+                .map(domain => [domain, (e[domain] ?? 0) + (e1[domain] ?? 0)])
+        )
     );
 
     client.metrics.updateDomainHits(phishingDomains);
