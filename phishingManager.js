@@ -11,6 +11,7 @@ module.exports = class PhishingManager {
     async run() {
         this.client.on('raw', async data => {
             if (data.t !== 'MESSAGE_CREATE') return;
+            if (!data.d.content || !data.d.content.includes('http')) return;
             this.test(data.d.content);
         });
 
