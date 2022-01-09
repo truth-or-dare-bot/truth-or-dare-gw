@@ -230,7 +230,7 @@ client.on('raw', async data => {
                                 label: 'Add Slash Commands'
                             }),
                             new MessageButton({
-                                url: 'https://discord.gg/mwKZq2y',
+                                url: 'https://discord.gg/vBERMvVaRt',
                                 style: 'LINK',
                                 label: 'Support Server'
                             })
