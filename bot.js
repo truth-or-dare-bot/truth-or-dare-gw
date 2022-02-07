@@ -94,7 +94,7 @@ client.on('raw', async data => {
 
     if (!message.content.startsWith(PREFIX) && !mentioned) return;
 
-    const command = message.content.slice(PREFIX.length).split(' ')[0];
+    const command = message.content.slice(PREFIX.length).split(' ')[0].replace(/[—–]/g, '--');
     if (command === 'memory--stats') {
         client.commandStats['memory--stats']++;
         const memory = await client.ipc.memoryUsage();
