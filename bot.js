@@ -33,11 +33,11 @@ class TOD extends Client {
         this.ipc = new IPC(this);
         this.metrics = new Metrics(this);
         this.phishingManager = new PhishingManager(this);
-        this.guildList = new Set();
         this.commandStats = Object.fromEntries(COMMANDS.map(c => [c, 0]));
         this.commandStats.mentioned = 0;
         this.commandStats['memory--stats'] = 0;
         this.commandStats['guild--count'] = 0;
+        this.commandStats['shard--guilds'] = 0;
         this.commandStats['cluster--status'] = 0;
         this.commandStats['command--stats'] = 0;
         this.commandStats['_eval'] = 0;
@@ -67,6 +67,8 @@ class TOD extends Client {
         this.options.shardCount = message.totalShards;
         const [start, end] = message.shards;
         this.options.shards = Array.from({ length: end - start + 1 }, (_, i) => i + start);
+        /** @type {Set<string>[]} */
+        this.guildList = Array.from({ length: this.options.shards.length }, () => new Set());
         console.log(` -- [CLUSTER START] ${this.clusterId}`);
 
         this.phishingManager.run();
@@ -78,6 +80,11 @@ class TOD extends Client {
         }
 
         return this.login();
+    }
+
+    shardCalculator(guildId) {
+        let shard = Math.floor(guildId / 2 ** 22) % this.options.shardCount;
+        return shard - this.options.shards[0];
     }
 }
 
@@ -111,16 +118,36 @@ client.on('raw', async data => {
             .catch(err => null);
     } else if (command === 'guild--count') {
         client.commandStats['guild--count']++;
-        const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
+        const guildCounts = await client.ipc.broadcastEval(
+            'this.guildList.reduce((a, c) => a + c.size, 0)'
+        );
         // @ts-ignore
         await client.api.channels[message.channelId].messages
             .post({
                 data: {
-                    content: `This cluster: ${client.guildList.size.toLocaleString()}\nTotal Guilds: ${guildCounts
+                    content: `This cluster: ${client.guildList
+                        .reduce((a, c) => a + c.size, 0)
+                        .toLocaleString()}\nTotal Guilds: ${guildCounts
                         .reduce((a, c) => a + c, 0)
                         .toLocaleString()}`
                 }
             })
+            .catch(err => null);
+    } else if (command === 'shard--guilds') {
+        client.commandStats['shard--guilds']++;
+        const guildCounts = await client.ipc.broadcastEval('this.guildList.map(s => s.size)');
+        const link = await require('superagent')
+            .post(`https://haste.unbelievaboat.com/documents`)
+            .send(
+                guildCounts
+                    .flat()
+                    .map((c, i) => `${i.toString().padStart(4, ' ')}\t${c}`)
+                    .join('\n')
+            )
+            .then(res => `https://haste.unbelievaboat.com/${res.body.key}`);
+        // @ts-ignore
+        await client.api.channels[message.channelId].messages
+            .post({ data: { content: link } })
             .catch(err => null);
     } else if (command === 'cluster--status') {
         client.commandStats['cluster--status']++;
@@ -256,8 +283,10 @@ client.on('invalidRequestWarning', ({ count, remainingTime }) => {
 
 client.on('raw', data => {
     if (!['GUILD_CREATE', 'GUILD_DELETE'].includes(data.t)) return;
-    if (data.t === 'GUILD_CREATE') client.guildList.add(data.d.id);
-    if (data.t === 'GUILD_DELETE') client.guildList.delete(data.d.id);
+    if (data.t === 'GUILD_CREATE')
+        client.guildList[client.shardCalculator(data.d.id)].add(data.d.id);
+    if (data.t === 'GUILD_DELETE')
+        client.guildList[client.shardCalculator(data.d.id)].delete(data.d.id);
 });
 
 client.on('raw', data => {
@@ -411,7 +440,9 @@ function startWebServer() {
 }
 
 async function postTopgg() {
-    const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
+    const guildCounts = await client.ipc.broadcastEval(
+        'this.guildList.reduce((a, c) => a + c.size, 0)'
+    );
     const shard_count = await client.ipc.masterEval('this.totalShards');
 
     await require('superagent')
@@ -426,7 +457,9 @@ async function updateMetrics() {
     if (checkClustersOnline.some(s => !s)) return; // If all clusters aren't ready yet
 
     // Server Count
-    const guildCounts = await client.ipc.broadcastEval('this.guildList.size');
+    const guildCounts = await client.ipc.broadcastEval(
+        'this.guildList.reduce((a, c) => a + c.size, 0)'
+    );
     const guildCount = guildCounts.reduce((a, c) => a + c, 0);
 
     client.metrics.guildCount.set(guildCount);
