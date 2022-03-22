@@ -135,19 +135,16 @@ client.on('raw', async data => {
             .catch(err => null);
     } else if (command === 'shard--guilds') {
         client.commandStats['shard--guilds']++;
-        const guildCounts = await client.ipc.broadcastEval('this.guildList.map(s => s.size)');
+        const guildCounts = (
+            await client.ipc.broadcastEval('this.guildList.map(s => s.size)')
+        ).flat();
         const link = await require('superagent')
             .post(`https://haste.unbelievaboat.com/documents`)
-            .send(
-                guildCounts
-                    .flat()
-                    .map((c, i) => `${i.toString().padStart(4, ' ')}\t${c}`)
-                    .join('\n')
-            )
+            .send(guildCounts.map((c, i) => `${i.toString().padStart(4, ' ')}\t${c}`).join('\n'))
             .then(res => `https://haste.unbelievaboat.com/${res.body.key}`);
         // @ts-ignore
         await client.api.channels[message.channelId].messages
-            .post({ data: { content: link } })
+            .post({ data: { content: `${Math.max(...guildCounts)}\n${link}` } })
             .catch(err => null);
     } else if (command === 'cluster--status') {
         client.commandStats['cluster--status']++;
