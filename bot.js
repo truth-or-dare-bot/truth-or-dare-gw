@@ -210,7 +210,7 @@ client.on('raw', async data => {
             const hide = (str, thing) => str.replaceAll(thing, '-- NOPE --');
             let result, type, length;
             try {
-                result = await eval(message.content.slice(mentioned.length + 'eval'.length).trim());
+                result = await eval(rest);
                 type = typeof result;
                 if (typeof result !== 'string') result = require('util').inspect(result);
                 result = hide(result, client.token);
