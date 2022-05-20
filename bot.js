@@ -1,8 +1,6 @@
 const {
     Client,
     LimitedCollection,
-    MessageButton,
-    MessageActionRow,
     Message,
     Constants: { ShardEvents, WSCodes, Events }
 } = require('discord.js');
@@ -18,9 +16,8 @@ const UNRESUMABLE_CLOSE_CODES = [
 const IPC = require('./IPC.js');
 const Metrics = require('./Metrics');
 const PhishingManager = require('./phishingManager.js');
-const { PREFIX, TOPGG_KEY } = process.env;
+const { TOPGG_KEY } = process.env;
 const OWNERS = process.env.OWNERS?.split(',') || [];
-const COMMANDS = ['truth', 't', 'dare', 'd', 'nhie', 'n', 'wyr', 'w', 'help', 'tod', 'paranoia'];
 
 class TOD extends Client {
     constructor() {
@@ -33,15 +30,14 @@ class TOD extends Client {
         this.ipc = new IPC(this);
         this.metrics = new Metrics(this);
         this.phishingManager = new PhishingManager(this);
-        this.commandStats = Object.fromEntries(COMMANDS.map(c => [c, 0]));
-        this.commandStats.mentioned = 0;
-        this.commandStats['memory--stats'] = 0;
-        this.commandStats['guild--count'] = 0;
-        this.commandStats['shard--guilds'] = 0;
-        this.commandStats['cluster--status'] = 0;
-        this.commandStats['command--stats'] = 0;
-        this.commandStats['_eval'] = 0;
-
+        this.commandStats = {
+            'memory--stats': 0,
+            'guild--count': 0,
+            'shard--guilds': 0,
+            'cluster--status': 0,
+            'command--stats': 0,
+            eval: 0
+        };
         this.websocketEvents = {};
         this.domainHits = {};
 
@@ -97,173 +93,161 @@ client.on('raw', async data => {
     const message = new Message(client, data.d);
     if (message.author.bot) return;
 
-    const mentioned = new RegExp(`^<@!?${client.user.id}>$`).test(message.content);
+    const mentioned = message.content.match(new RegExp(`^<@!?${client.user.id}>`))?.[0] ?? '';
 
-    if (!message.content.startsWith(PREFIX) && !mentioned) return;
+    if (!mentioned) return;
 
-    const command = message.content.slice(PREFIX.length).split(' ')[0].replace(/[—–]/g, '--');
-    if (command === 'memory--stats') {
-        client.commandStats['memory--stats']++;
-        const memory = await client.ipc.memoryUsage();
-        for (const k in memory) {
-            memory[k] = (memory[k] / 1024 / 1024).toFixed(2) + ' MB';
-        }
-        // @ts-ignore
-        await client.api.channels[message.channelId].messages
-            .post({
-                data: {
-                    content: '```js\n' + require('util').inspect(memory) + '\n```'
-                }
-            })
-            .catch(err => null);
-    } else if (command === 'guild--count') {
-        client.commandStats['guild--count']++;
-        const guildCounts = await client.ipc.broadcastEval(
-            'this.guildList.reduce((a, c) => a + c.size, 0)'
-        );
-        // @ts-ignore
-        await client.api.channels[message.channelId].messages
-            .post({
-                data: {
-                    content: `This cluster: ${client.guildList
-                        .reduce((a, c) => a + c.size, 0)
-                        .toLocaleString()}\nTotal Guilds: ${guildCounts
-                        .reduce((a, c) => a + c, 0)
-                        .toLocaleString()}`
-                }
-            })
-            .catch(err => null);
-    } else if (command === 'shard--guilds') {
-        client.commandStats['shard--guilds']++;
-        const guildCounts = (
-            await client.ipc.broadcastEval('this.guildList.map(s => s.size)')
-        ).flat();
-        const link = await require('superagent')
-            .post(`https://haste.unbelievaboat.com/documents`)
-            .send(guildCounts.map((c, i) => `${i.toString().padStart(4, ' ')}\t${c}`).join('\n'))
-            .then(res => `https://haste.unbelievaboat.com/${res.body.key}`);
-        // @ts-ignore
-        await client.api.channels[message.channelId].messages
-            .post({ data: { content: `${Math.max(...guildCounts)}\n${link}` } })
-            .catch(err => null);
-    } else if (command === 'cluster--status') {
-        client.commandStats['cluster--status']++;
-        const clusters = await client.ipc.broadcastEval('this.isReady() ? "online" : "offline"');
-        // @ts-ignore
-        await client.api.channels[message.channelId].messages
-            .post({
-                data: {
-                    content:
-                        '```js\n' +
-                        require('util').inspect(
-                            Object.fromEntries([...clusters.entries()].map(([a, b]) => [a + 1, b]))
-                        ) +
-                        '\n```'
-                }
-            })
-            .catch(err => null);
-    } else if (command === 'command--stats') {
-        client.commandStats['command--stats']++;
-        const totals = await client.ipc.broadcastEval('[this.rollingStats, this.commandStats]');
-        const [rollingStats, commandStats] = totals.reduce(([r, c], [r1, c1], i) => [
-            {
-                current: r.current + r1.current,
-                past: Array.from(
-                    { length: Math.max(r.past.length, r1.past.length) },
-                    (_, k) => (r.past[k] || 0) + (r1.past[k] || 0)
-                ),
-                lastUpdate: (r.lastUpdate * i + r1.lastUpdate) / (i + 1)
-            },
-            Object.fromEntries(Object.entries(c).map(([name, count]) => [name, c1[name] + count]))
-        ]);
-        // @ts-ignore
-        await client.api.channels[message.channelId].messages
-            .post({
-                data: {
-                    content: `Usage since <t:${
-                        (rollingStats.lastUpdate / 1000) | 0
-                    }:R>: ${rollingStats.current.toLocaleString()}\nAverage Usage/h: ${
-                        rollingStats.past.reduce((a, c) => a + c, 0) / rollingStats.past.length
-                    }\n__Totals:__\n${Object.entries(commandStats)
-                        .filter(
-                            ([name]) =>
-                                OWNERS.includes(message.author.id) || COMMANDS.includes(name)
-                        )
-                        .map(([name, count]) => `${name}: ${count.toLocaleString()}`)
-                        .join('\n')}`
-                }
-            })
-            .catch(err => null);
-    } else if (command === '_eval' && OWNERS.includes(message.author.id)) {
-        client.commandStats['_eval']++;
-        const hide = (str, thing) => str.replaceAll(thing, '-- NOPE --');
-        let result, type, length;
-        try {
-            result = await eval(message.content.slice(PREFIX.length + '_eval'.length).trim());
-            type = typeof result;
-            if (typeof result !== 'string') result = require('util').inspect(result);
-            result = hide(result, client.token);
-            length = result.length;
-            if (result.length > 4080)
-                result = await require('superagent')
-                    .post(`https://haste.unbelievaboat.com/documents`)
-                    .send(result)
-                    .then(res => `https://haste.unbelievaboat.com/${res.body.key}.js`);
-            else result = '```js\n' + result + '\n```';
-        } catch (err) {
-            type = 'error';
-            result = '```js\n' + require('util').inspect(err).slice(0, 4070) + '\n```';
-            length = 'unknown';
-        }
-        // @ts-ignore
-        await client.api.channels[message.channelId].messages
-            .post({
-                data: {
-                    embeds: [
-                        {
-                            title: type,
-                            description: result,
-                            color: 0x039dfc,
-                            footer: {
-                                text: `length: ${length}`
-                            },
-                            timestamp: new Date()
-                        }
-                    ]
-                }
-            })
-            .catch(err => null);
-    }
-    if (!COMMANDS.includes(command.toLowerCase()) && !mentioned) return;
-    client.commandStats[mentioned ? 'mentioned' : command.toLowerCase()]++;
-    client.rollingStats.current++;
+    const command = message.content
+        .slice(mentioned.length)
+        .trim()
+        .split(' ')[0]
+        .replace(/[—–]/g, '--');
+    const rest = message.content.slice(mentioned.length).trim().split(' ').slice(1).join(' ');
 
-    // @ts-ignore
-    await client.api.channels[message.channelId].messages
-        .post({
-            data: {
-                content:
-                    "Commands have been moved to slash commands! Type `/` to see a list of commands. If you don't see them, ask a server admin to click the button below to add my slash commands.",
-                components: [
-                    // @ts-ignore
-                    new MessageActionRow()
-                        .addComponents(
-                            new MessageButton({
-                                url: `https://discord.com/oauth2/authorize?client_id=692045914436796436&permissions=19456&scope=bot%20applications.commands&guild_id=${message.guildId}`,
-                                style: 'LINK',
-                                label: 'Add Slash Commands'
-                            }),
-                            new MessageButton({
-                                url: 'https://discord.gg/vBERMvVaRt',
-                                style: 'LINK',
-                                label: 'Support Server'
-                            })
-                        )
-                        .toJSON()
-                ]
+    switch (command) {
+        case 'memory--stats': {
+            const memory = await client.ipc.memoryUsage();
+            for (const k in memory) {
+                memory[k] = (memory[k] / 1024 / 1024).toFixed(2) + ' MB';
             }
-        })
-        .catch(err => null);
+            // @ts-ignore
+            await client.api.channels[message.channelId].messages
+                .post({
+                    data: {
+                        content: '```js\n' + require('util').inspect(memory) + '\n```'
+                    }
+                })
+                .catch(_ => null);
+            break;
+        }
+        case 'guild--count': {
+            const guildCounts = await client.ipc.broadcastEval(
+                'this.guildList.reduce((a, c) => a + c.size, 0)'
+            );
+            // @ts-ignore
+            await client.api.channels[message.channelId].messages
+                .post({
+                    data: {
+                        content: `This cluster: ${client.guildList
+                            .reduce((a, c) => a + c.size, 0)
+                            .toLocaleString()}\nTotal Guilds: ${guildCounts
+                            .reduce((a, c) => a + c, 0)
+                            .toLocaleString()}`
+                    }
+                })
+                .catch(_ => null);
+            break;
+        }
+        case 'shard--guilds': {
+            const guildCounts = (
+                await client.ipc.broadcastEval('this.guildList.map(s => s.size)')
+            ).flat();
+            const link = await require('superagent')
+                .post(`https://haste.unbelievaboat.com/documents`)
+                .send(
+                    guildCounts.map((c, i) => `${i.toString().padStart(4, ' ')}\t${c}`).join('\n')
+                )
+                .then(res => `https://haste.unbelievaboat.com/${res.body.key}`);
+            // @ts-ignore
+            await client.api.channels[message.channelId].messages
+                .post({ data: { content: `${Math.max(...guildCounts)}\n${link}` } })
+                .catch(_ => null);
+            break;
+        }
+        case 'cluster--status': {
+            const clusters = await client.ipc.broadcastEval(
+                'this.isReady() ? "online" : "offline"'
+            );
+            // @ts-ignore
+            await client.api.channels[message.channelId].messages
+                .post({
+                    data: {
+                        content:
+                            '```js\n' +
+                            require('util').inspect(
+                                Object.fromEntries(
+                                    [...clusters.entries()].map(([a, b]) => [a + 1, b])
+                                )
+                            ) +
+                            '\n```'
+                    }
+                })
+                .catch(_ => null);
+        }
+        case 'command--stats': {
+            const totals = await client.ipc.broadcastEval('[this.rollingStats, this.commandStats]');
+            const [rollingStats, commandStats] = totals.reduce(([r, c], [r1, c1], i) => [
+                {
+                    current: r.current + r1.current,
+                    past: Array.from(
+                        { length: Math.max(r.past.length, r1.past.length) },
+                        (_, k) => (r.past[k] || 0) + (r1.past[k] || 0)
+                    ),
+                    lastUpdate: (r.lastUpdate * i + r1.lastUpdate) / (i + 1)
+                },
+                Object.fromEntries(
+                    Object.entries(c).map(([name, count]) => [name, c1[name] + count])
+                )
+            ]);
+            // @ts-ignore
+            await client.api.channels[message.channelId].messages
+                .post({
+                    data: {
+                        content: `Usage since <t:${
+                            (rollingStats.lastUpdate / 1000) | 0
+                        }:R>: ${rollingStats.current.toLocaleString()}\nAverage Usage/h: ${
+                            rollingStats.past.reduce((a, c) => a + c, 0) / rollingStats.past.length
+                        }\n__Totals:__\n${Object.entries(commandStats)
+                            .map(([name, count]) => `${name}: ${count.toLocaleString()}`)
+                            .join('\n')}`
+                    }
+                })
+                .catch(_ => null);
+            break;
+        }
+        case 'eval':
+            if (!OWNERS.includes(message.author.id)) break;
+            const hide = (str, thing) => str.replaceAll(thing, '-- NOPE --');
+            let result, type, length;
+            try {
+                result = await eval(message.content.slice(mentioned.length + 'eval'.length).trim());
+                type = typeof result;
+                if (typeof result !== 'string') result = require('util').inspect(result);
+                result = hide(result, client.token);
+                length = result.length;
+                if (result.length > 4080)
+                    result = await require('superagent')
+                        .post(`https://haste.unbelievaboat.com/documents`)
+                        .send(result)
+                        .then(res => `https://haste.unbelievaboat.com/${res.body.key}.js`);
+                else result = '```js\n' + result + '\n```';
+            } catch (err) {
+                type = 'error';
+                result = '```js\n' + require('util').inspect(err).slice(0, 4070) + '\n```';
+                length = 'unknown';
+            }
+            // @ts-ignore
+            await client.api.channels[message.channelId].messages
+                .post({
+                    data: {
+                        embeds: [
+                            {
+                                title: type,
+                                description: result,
+                                color: 0x039dfc,
+                                footer: {
+                                    text: `length: ${length}`
+                                },
+                                timestamp: new Date()
+                            }
+                        ]
+                    }
+                })
+                .catch(_ => null);
+            break;
+    }
+    client.commandStats[command.toLowerCase()]++;
+    client.rollingStats.current++;
 });
 
 client.on('ready', () => {
