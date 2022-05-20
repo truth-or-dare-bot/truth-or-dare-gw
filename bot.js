@@ -206,7 +206,7 @@ client.on('raw', async data => {
                 .catch(_ => null);
             break;
         }
-        case 'eval':
+        case 'eval': {
             if (!OWNERS.includes(message.author.id)) break;
             const hide = (str, thing) => str.replaceAll(thing, '-- NOPE --');
             let result, type, length;
@@ -246,6 +246,10 @@ client.on('raw', async data => {
                 })
                 .catch(_ => null);
             break;
+        }
+        default: {
+            return;
+        }
     }
     client.commandStats[command.toLowerCase()]++;
     client.rollingStats.current++;
