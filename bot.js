@@ -173,6 +173,7 @@ client.on('raw', async data => {
                     }
                 })
                 .catch(_ => null);
+            break;
         }
         case 'command--stats': {
             const totals = await client.ipc.broadcastEval('[this.rollingStats, this.commandStats]');
