@@ -36,6 +36,7 @@ class TOD extends Client {
             'shard--guilds': 0,
             'cluster--status': 0,
             'command--stats': 0,
+            say: 0,
             eval: 0
         };
         this.websocketEvents = {};
@@ -204,6 +205,23 @@ client.on('raw', async data => {
                     }
                 })
                 .catch(_ => null);
+            break;
+        }
+        case 'say': {
+            if (!OWNERS.includes(message.author.id)) break;
+            let [_, channel = message.channelId, mess = ''] =
+                rest.match(/(?:(?:<#)(\d+)>?\s+)?((?:.|\s)+)/i) ?? [];
+            // @ts-ignore
+            const res = await client.api.channels[channel].messages
+                .post({ data: { content: mess } })
+                .then(_ => true)
+                .catch(_ => false);
+            if (!res) {
+                // @ts-ignore
+                await client.api.channels[message.channelId].messages
+                    .post({ data: { content: ':x: failed to send' } })
+                    .catch(_ => null);
+            }
             break;
         }
         case 'eval': {
