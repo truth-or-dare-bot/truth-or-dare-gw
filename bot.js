@@ -210,7 +210,7 @@ client.on('raw', async data => {
         case 'say': {
             if (!OWNERS.includes(message.author.id)) break;
             let [_, channel = message.channelId, mess = ''] =
-                rest.match(/(?:(?:<#)(\d+)>?\s+)?((?:.|\s)+)/i) ?? [];
+                rest.match(/(?:(?:<#)?(\d+)>?\s+)?((?:.|\s)+)/i) ?? [];
             // @ts-ignore
             const res = await client.api.channels[channel].messages
                 .post({ data: { content: mess } })
