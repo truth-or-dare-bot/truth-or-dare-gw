@@ -16,7 +16,7 @@ const UNRESUMABLE_CLOSE_CODES = [
 const IPC = require('./IPC.js');
 const Metrics = require('./Metrics');
 const PhishingManager = require('./phishingManager.js');
-const { TOPGG_KEY } = process.env;
+const { TOPGG_KEY, API_URL } = process.env;
 const OWNERS = process.env.OWNERS?.split(',') || [];
 
 class TOD extends Client {
@@ -25,7 +25,8 @@ class TOD extends Client {
             intents: ['GUILDS', 'GUILD_MESSAGES'],
             makeCache: () => new LimitedCollection({ maxSize: 0 }),
             presence: { activities: [{ name: 'Truth or Dare • /help', type: 'PLAYING' }] },
-            invalidRequestWarningInterval: 250
+            invalidRequestWarningInterval: 250,
+            http: { api: API_URL || undefined }
         });
         this.ipc = new IPC(this);
         this.metrics = new Metrics(this);
