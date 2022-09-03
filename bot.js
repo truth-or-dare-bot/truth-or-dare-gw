@@ -16,6 +16,8 @@ const UNRESUMABLE_CLOSE_CODES = [
 const IPC = require('./IPC.js');
 const Metrics = require('./Metrics');
 const PhishingManager = require('./phishingManager.js');
+/** @type {{TOPGG_KEY: string, API_URL: string}} */
+// @ts-ignore
 const { TOPGG_KEY, API_URL } = process.env;
 const OWNERS = process.env.OWNERS?.split(',') || [];
 
@@ -43,11 +45,13 @@ class TOD extends Client {
         this.websocketEvents = {};
         this.domainHits = {};
 
+        /** @type {{current: number, past: number[], lastUpdate: number}} */
         this.rollingStats = {
             current: 0,
             past: [],
             lastUpdate: Date.now()
         };
+        this.guildList = [];
         setInterval(() => {
             this.rollingStats.past.unshift(this.rollingStats.current);
             if (this.rollingStats.past.length > 24) this.rollingStats.past.pop();
@@ -81,7 +85,9 @@ class TOD extends Client {
     }
 
     shardCalculator(guildId) {
+        // @ts-ignore
         let shard = Math.floor(guildId / 2 ** 22) % this.options.shardCount;
+        // @ts-ignore
         return shard - this.options.shards[0];
     }
 }
@@ -95,6 +101,7 @@ client.on('raw', async data => {
     const message = new Message(client, data.d);
     if (message.author.bot) return;
 
+    // @ts-ignore
     const mentioned = message.content.match(new RegExp(`^<@!?${client.user.id}>`))?.[0] ?? '';
 
     if (!mentioned) return;
