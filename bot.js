@@ -1,18 +1,7 @@
-const {
-    Client,
-    LimitedCollection,
-    Message,
-    Constants: { ShardEvents, WSCodes, Events }
-} = require('discord.js');
-const { RPCErrorCodes } = require('discord-api-types/v9');
+const { Client, LimitedCollection, Message } = require('discord.js');
 const express = require('express');
 const { register } = require('prom-client');
-const UNRECOVERABLE_CLOSE_CODES = Object.keys(WSCodes).slice(1).map(Number);
-const UNRESUMABLE_CLOSE_CODES = [
-    RPCErrorCodes.UnknownError,
-    RPCErrorCodes.InvalidPermissions,
-    RPCErrorCodes.InvalidClientId
-];
+
 const IPC = require('./IPC.js');
 const Metrics = require('./Metrics');
 const PhishingManager = require('./phishingManager.js');
@@ -40,7 +29,8 @@ class TOD extends Client {
             'cluster--status': 0,
             'command--stats': 0,
             say: 0,
-            eval: 0
+            eval: 0,
+            restart: 0
         };
         this.websocketEvents = {};
         this.domainHits = {};
@@ -275,7 +265,6 @@ client.on('raw', async data => {
         }
         case 'restart': {
             if (!OWNERS.includes(message.author.id)) break;
-            const clusters = await client.ipc.getClusters();
             /** @type {string} */
             let result;
             if (rest === 'all') {
