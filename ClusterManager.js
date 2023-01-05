@@ -70,11 +70,12 @@ class ClusterManager {
      * @param {'auto'|[number, number]} [options.shards='auto'] - The range of shards to run, inclusive
      * @param {'auto'|number} [options.firstClusterID='auto'] - The id of the first cluster this manager runs
      * @param {number} [options.shardsPerCluster=1] - The number of shards each cluster manages
-     * @param {number} [options.startDelay=5000] - The milliseconds of delay between each cluster starting
+     * @param {number} [options.startDelay=10000] - The milliseconds of delay between each cluster starting
+     * @param {number} [options.maxConcurrent=5] - The maximumum clusters starting at once
      * @param {boolean} [options.respawn=true] - If clusters should automatically be restarted when the exit
-     * @param {Object<string, string>} [options.env] - The environment variables to provide the clusters' process
+     * @param {Record<string, string>} [options.env] - The environment variables to provide the clusters' process
      * @param {logFunc} [options.logFunction] - The function used to log data, should take two arguments
-     * @param {Object<string, messageOp>} [options.messageOps={}] - Any additional message ops
+     * @param {Record<string, messageOp>} [options.messageOps={}] - Any additional message ops
      */
     constructor(file, options = {}) {
         if (!file) throw new Error('The file argument is required');
@@ -87,6 +88,12 @@ class ClusterManager {
         this.clusters = new Map();
         /** @type {Map<string, PendingResult>} */
         this.pendingOutputs = new Map();
+        /** @type {Set<number>} */
+        this.starting = new Set();
+        /** @type {Set<{id: number, shards: [number, number]}>} */
+        this.clusterQueue = new Set();
+        /** @type {boolean} */
+        this.spawning = false;
 
         const {
             token = '',
@@ -95,16 +102,19 @@ class ClusterManager {
             firstClusterID = 'auto',
             shardsPerCluster = 1,
             startDelay = 10000,
+            maxConcurrent = 5,
             respawn = true,
             env = process.env,
             logFunction = console.log,
-            messageOps = []
+            messageOps = {}
         } = options;
 
         if (!token && totalShards === 'auto')
             throw new Error('Cannot automatically calculate shards without the token');
+        /** @type {string} */
         this.token = token ? token.replace(/Bot */, '') : token;
 
+        /** @type {number | 'auto'} */
         this.totalShards = totalShards;
         if (this.totalShards !== 'auto') {
             if (typeof this.totalShards !== 'number' || isNaN(this.totalShards))
@@ -113,6 +123,7 @@ class ClusterManager {
                 throw new RangeError('Invalid totalShards, must be a positive integer');
         }
 
+        /** @type {'auto' | [number, number]} */
         this.shards = shards;
         if (shards !== 'auto') {
             if (!Array.isArray(this.shards)) throw new TypeError('Invalid shards range');
@@ -125,6 +136,7 @@ class ClusterManager {
                 throw new TypeError('Invalid Shards range, must be an array of positive integers');
         }
 
+        /** @type {number | 'auto'} */
         this.firstClusterID = firstClusterID;
         if (firstClusterID !== 'auto') {
             if (typeof firstClusterID !== 'number' || isNaN(firstClusterID))
@@ -137,18 +149,30 @@ class ClusterManager {
             throw new TypeError('Invalid shardsPerCluster option');
         if (!Number.isInteger(shardsPerCluster) || shardsPerCluster < 1)
             throw new RangeError('Invalid shardsPerCluster option, must be a positive integer');
+        /** @type {number} */
         this.shardsPerCluster = shardsPerCluster;
 
         if (typeof startDelay !== 'number' || isNaN(startDelay))
             throw new TypeError('Invalid startDelay option');
         if (!Number.isInteger(startDelay) || startDelay < 0)
             throw new RangeError('Invalid startDelay option, must be a positive integer');
+        /** @type {number} */
         this.startDelay = startDelay;
 
+        if (typeof maxConcurrent !== 'number' || isNaN(maxConcurrent))
+            throw new TypeError('Invalid maxConcurrent option');
+        if (!Number.isInteger(maxConcurrent) || maxConcurrent < 1)
+            throw new RangeError('Invalid maxConcurrent option, must be a positive integer');
+        /** @type {number} */
+        this.maxConcurrent = maxConcurrent;
+
+        /** @type {boolean} */
         this.respawn = !!respawn;
+        /** @type {Record<string, string | undefined>} */
         this.env = env;
         /** @type {logFunc} */
         this.logFunction = logFunction;
+        /** @type {Record<string, messageOp>} */
         this.messageOps = messageOps;
 
         if (this.token && !this.env.DISCORD_TOKEN) this.env.DISCORD_TOKEN = this.token;
@@ -173,9 +197,12 @@ class ClusterManager {
             const firstShard = i * this.shardsPerCluster + this.shards[0];
             const lastShard = Math.min((i + 1) * this.shardsPerCluster - 1, this.shards[1]);
 
-            await this.spawnCluster(i + this.firstClusterID, [firstShard, lastShard]);
-            await sleep(this.startDelay);
+            this.clusterQueue.add({
+                id: i + this.firstClusterID,
+                shards: [firstShard, lastShard]
+            });
         }
+        await this.spawnClusters();
     }
 
     /**
@@ -208,6 +235,26 @@ class ClusterManager {
     }
 
     /**
+     * Start spawing clusters from the queue
+     */
+    async spawnClusters() {
+        if (this.spawning) return;
+        this.spawning = true;
+        while (this.clusterQueue.size) {
+            if (this.starting.size >= this.maxConcurrent) {
+                await sleep(this.startDelay);
+                continue;
+            }
+            const [clust] = this.clusterQueue;
+            this.clusterQueue.delete(clust);
+            this.starting.add(clust.id);
+            await this.spawnCluster(clust.id, clust.shards);
+            await sleep(this.startDelay);
+        }
+        this.spawning = false;
+    }
+
+    /**
      * Create a cluster
      * @param {number} id - The cluster id
      * @param {[number, number]} range - The range of shards the cluster will run
@@ -231,6 +278,7 @@ class ClusterManager {
      * @param {number} id - The cluster id
      * @param {[number, number]} range - The range of shards it handles
      * @param {import('child_process').ChildProcess} child - The cluster process
+     * @returns {Promise<void>}
      */
     async handleCluster(id, range, child) {
         this.clusters.set(id, { id, range, child, ready: false, client: '' });
@@ -263,7 +311,10 @@ class ClusterManager {
             15216652
         );
         this.clusters.delete(id);
-        if ((this.respawn && code === 0) || code === 1) this.spawnCluster(id, range);
+        if ((this.respawn && code === 0) || code === 1) {
+            this.clusterQueue.add({ id, shards: range });
+            this.spawnClusters();
+        }
     }
 
     /**
@@ -326,6 +377,8 @@ class ClusterManager {
         );
         cluster.ready = true;
         cluster.client = message.client;
+
+        this.starting.delete(id);
     }
 
     /**
