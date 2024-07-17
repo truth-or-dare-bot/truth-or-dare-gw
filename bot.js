@@ -4,7 +4,6 @@ const { register } = require('prom-client');
 
 const IPC = require('./IPC.js');
 const Metrics = require('./Metrics');
-const PhishingManager = require('./phishingManager.js');
 /** @type {{TOPGG_KEY: string, API_URL: string}} */
 // @ts-ignore
 const { TOPGG_KEY, API_URL } = process.env;
@@ -21,7 +20,6 @@ class TOD extends Client {
         });
         this.ipc = new IPC(this);
         this.metrics = new Metrics(this);
-        this.phishingManager = new PhishingManager(this);
         this.commandStats = {
             'memory--stats': 0,
             'guild--count': 0,
@@ -62,8 +60,6 @@ class TOD extends Client {
         /** @type {Set<string>[]} */
         this.guildList = Array.from({ length: this.options.shards.length }, () => new Set());
         console.log(` -- [CLUSTER START] ${this.clusterId}`);
-
-        this.phishingManager.run();
 
         if (this.clusterId === 1) {
             startWebServer();
@@ -345,7 +341,7 @@ async function postTopgg() {
         .post('https://top.gg/api/bots/692045914436796436/stats')
         .set('Authorization', TOPGG_KEY)
         .send({ shard_count, server_count: guildCounts.reduce((a, c) => a + c, 0) })
-        .catch(console.error);
+        .catch(err => console.log('[TOPGG POST ERROR]', err.message));
 }
 
 async function updateMetrics() {
@@ -379,16 +375,4 @@ async function updateMetrics() {
     );
 
     client.metrics.updateWebsocketEvents(websocketEvents);
-
-    // Phishing Domain Hits
-    const phishingDomainArray = await client.ipc.broadcastEval('this.domainHits');
-    const phishingDomains = phishingDomainArray.reduce((e, e1) =>
-        Object.fromEntries(
-            [...Object.keys(e), ...Object.keys(e1)]
-                .filter((a, i, r) => r.indexOf(a) === i)
-                .map(domain => [domain, (e[domain] ?? 0) + (e1[domain] ?? 0)])
-        )
-    );
-
-    client.metrics.updateDomainHits(phishingDomains);
 }
